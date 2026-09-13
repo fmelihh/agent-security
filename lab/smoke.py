@@ -9,7 +9,7 @@ Run:  uv run python -m lab.smoke
 from __future__ import annotations
 
 from . import data
-from .defense import guard_policy
+from .middleware import guard_policy
 from .report import exfiltrated_emails
 from .tools import ALL_TOOLS, LEAST_PRIVILEGE_TOOLS, query_customer_db, send_email
 

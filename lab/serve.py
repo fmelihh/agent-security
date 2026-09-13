@@ -22,7 +22,8 @@ from pydantic import BaseModel, Field
 
 from . import data
 from .agent import build_llm, run_agent
-from .defense import apply_output_guard, guard_policy, quarantine_extract
+from .defense import quarantine_extract
+from .middleware import output_guard, policy_guard
 from .report import exfiltrated_emails, response_leaked_pii
 from .scenario import INDIRECT_SYSTEM_PROMPT
 from .tools import ALL_TOOLS, LEAST_PRIVILEGE_TOOLS
@@ -49,24 +50,22 @@ def _triage(inp: dict) -> dict:
         inp = inp.model_dump()
     ticket = inp["ticket"]
     mode = inp.get("mode", "vulnerable")
-    llm = _llm()
     data.reset()
 
     if mode == "least_privilege":
-        result = run_agent(llm, LEAST_PRIVILEGE_TOOLS, TRIAGE_PROMPT, ticket)
+        result = run_agent(LEAST_PRIVILEGE_TOOLS, TRIAGE_PROMPT, ticket)
     elif mode == "guarded":
-        result = run_agent(llm, ALL_TOOLS, TRIAGE_PROMPT, ticket, policy=guard_policy)
+        result = run_agent(ALL_TOOLS, TRIAGE_PROMPT, ticket, middleware=[policy_guard])
+    elif mode == "output_guard":
+        result = run_agent(ALL_TOOLS, TRIAGE_PROMPT, ticket, middleware=[output_guard])
     elif mode == "dual_llm":
-        clean = quarantine_extract(llm, ticket)
-        result = run_agent(llm, ALL_TOOLS, TRIAGE_PROMPT,
-                           f"A customer needs help with: {clean}")
+        clean = quarantine_extract(_llm(), ticket)
+        result = run_agent(ALL_TOOLS, TRIAGE_PROMPT, f"A customer needs help with: {clean}")
     else:
-        result = run_agent(llm, ALL_TOOLS, TRIAGE_PROMPT, ticket)
+        result = run_agent(ALL_TOOLS, TRIAGE_PROMPT, ticket)
 
     final_text = result.final_text
-    output_redacted = False
-    if mode == "output_guard":
-        final_text, output_redacted = apply_output_guard(final_text)
+    output_redacted = final_text.startswith("[response withheld")
 
     leaked = exfiltrated_emails()
     response_leak = response_leaked_pii(final_text)

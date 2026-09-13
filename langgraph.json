@@ -3,6 +3,7 @@
   "graphs": {
     "vulnerable": "./lab/graph.py:vulnerable",
     "guarded": "./lab/graph.py:guarded",
-    "least_privilege": "./lab/graph.py:least_privilege"
+    "least_privilege": "./lab/graph.py:least_privilege",
+    "output_guarded": "./lab/graph.py:output_guarded"
   }
 }

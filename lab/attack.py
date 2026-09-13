@@ -15,7 +15,7 @@ Run:  uv run python -m lab.attack
 from __future__ import annotations
 
 from . import data
-from .agent import build_llm, run_agent
+from .agent import run_agent
 from .report import print_trace, print_verdict
 from .scenario import (
     INDIRECT_SYSTEM_PROMPT,
@@ -26,7 +26,7 @@ from .scenario import (
 from .tools import ALL_TOOLS
 
 
-def _run(llm, title: str, system_prompt: str, user_message: str) -> bool:
+def _run(title: str, system_prompt: str, user_message: str) -> bool:
     print("\n" + "=" * 72)
     print(title)
     print("=" * 72)
@@ -34,18 +34,15 @@ def _run(llm, title: str, system_prompt: str, user_message: str) -> bool:
     print("  " + user_message.replace("\n", "\n  "))
     print("-" * 72)
     data.reset()
-    result = run_agent(llm=llm, tools=ALL_TOOLS, system_prompt=system_prompt, user_message=user_message)
+    result = run_agent(ALL_TOOLS, system_prompt, user_message)  # no middleware = vulnerable
     print("Agent trace:")
     print_trace(result)
     return print_verdict(result.final_text)
 
 
 def main() -> None:
-    llm = build_llm()
-
     # A) Direct injection in the ticket.
     _run(
-        llm,
         "A) DIRECT INJECTION (instruction sits in the ticket)",
         TRIAGE_SYSTEM_PROMPT,
         INJECTED_TICKET,
@@ -53,7 +50,6 @@ def main() -> None:
 
     # B) Indirect injection via a poisoned tool result.
     breached = _run(
-        llm,
         "B) INDIRECT INJECTION (instruction rides in via get_order_notes)",
         INDIRECT_SYSTEM_PROMPT,
         INDIRECT_USER_REQUEST,

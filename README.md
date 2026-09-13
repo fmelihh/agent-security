@@ -6,8 +6,9 @@ against it** with five layered techniques. It's the working companion to the
 article on agent security: instead of talking about prompt injection in the
 abstract, you watch it happen and then watch it get stopped.
 
-The agent is a LangGraph `StateGraph` (`agent` → `tools` loop); the security
-controls live in a hand-written `tools` node so the boundary is explicit.
+The agent is built with LangChain's `create_agent`, and the security controls
+are native **middleware**: a `wrap_tool_call` policy and an `after_model` output
+guard. So the boundary is composable, not buried in a hand-written loop.
 
 It runs on a **small local model** (via Docker Model Runner) on purpose: that's
 what you actually end up shipping when cost, privacy, or on-prem rules out a big
@@ -36,9 +37,9 @@ turns into data exfiltration.
 
 ## Architecture
 
-It's a LangGraph `StateGraph`. The model only *proposes* tool calls; everything
-that can cause harm passes through the `tools` node and the output guard, which
-don't trust the model:
+The agent is a `create_agent` graph. The model only *proposes* tool calls;
+everything that can cause harm passes through middleware (a `wrap_tool_call`
+policy and an `after_model` output guard) that doesn't trust the model:
 
 ```mermaid
 flowchart TD
@@ -129,8 +130,8 @@ rules out a hosted one.
 You don't have to run the canned scripts; you can drive the agent by hand and
 watch it act on any ticket you throw at it.
 
-**LangGraph Studio** (`make dev`). This is a LangGraph `StateGraph`, so the
-LangGraph CLI serves it straight into Studio, where you type a ticket as the
+**LangGraph Studio** (`make dev`). `create_agent` returns a LangGraph graph, so
+the LangGraph CLI serves it straight into Studio, where you type a ticket as the
 user message and step through the graph node by node:
 
 ```bash
@@ -141,9 +142,10 @@ make dev        # uv run langgraph dev
 `langgraph.json` exposes three graphs so you can replay the same ticket against
 each and watch the defenses kick in:
 
-- `vulnerable`: all tools, no policy (the one that breaches)
-- `guarded`: all tools plus the allowlist / human-in-the-loop policy
+- `vulnerable`: all tools, no middleware (the one that breaches)
+- `guarded`: all tools plus the `policy_guard` middleware (allowlist / HITL)
 - `least_privilege`: read-only tools only
+- `output_guarded`: all tools plus the `output_guard` middleware
 
 **Browser playground** (`make ui`). A LangServe web UI where you submit a ticket
 plus a `mode` (`vulnerable`, `least_privilege`, `guarded`, `dual_llm`) and see
@@ -204,17 +206,18 @@ Each defense breaks the attack chain at a different point:
 1. **Least privilege.** The agent only gets read-only tools. There is no
    `query_customer_db` or `send_email` to abuse, so the injection has nothing to
    grab. *(holds)*
-2. **Send allowlist + human-in-the-loop.** A policy hook inspects every tool
-   call *before* it runs; `send_email` to a non-company domain is refused and
-   high-risk actions need human approval. Model-independent. *(holds)*
+2. **`policy_guard` middleware (allowlist + human-in-the-loop).** A
+   `wrap_tool_call` middleware inspects every tool call *before* it runs;
+   `send_email` to a non-company domain is refused and high-risk actions need
+   human approval. Model-independent. *(holds)*
 3. **Dual-LLM / CaMeL, naive.** A quarantined LLM with no tools distills the
    *user input* into a clean request. But indirect injection enters through a
    tool result the privileged model reads, so this **fails**. *(breach)*
-4. **Dual-LLM + policy.** Keep the quarantine, but also enforce the
-   deterministic guard. The guard backstops the LLM layers. *(holds)*
-5. **Output guard.** Scan the model's *reply* and redact it if it contains
-   bulk PII. Small models exfiltrate through the response, not the tools, so a
-   tool-only guard misses them entirely. *(holds)*
+4. **Dual-LLM + policy.** Keep the quarantine, but also add the `policy_guard`
+   middleware. The deterministic guard backstops the LLM layers. *(holds)*
+5. **`output_guard` middleware.** An `after_model` middleware scans the model's
+   *reply* and redacts it if it contains bulk PII. Small models exfiltrate
+   through the response, not the tools, so a tool-only guard misses them. *(holds)*
 
 ## Layout
 
@@ -222,7 +225,8 @@ Each defense breaks the attack chain at a different point:
 lab/
 ├── data.py         # fake customers, KB, poisoned order notes, allowlist, recorders
 ├── tools.py        # the agent tools (incl. get_order_notes, the indirect vector)
-├── agent.py        # LangGraph StateGraph (agent + tools nodes) with a policy hook
+├── agent.py        # create_agent wiring (build_llm, build_agent, run + trace)
+├── middleware.py   # the harness as middleware: policy_guard + output_guard
 ├── scenario.py     # the direct ticket + the indirect scenario + system prompts
 ├── examples.py     # 6 example inputs to try
 ├── attack.py       # Scenario 1: vulnerable agent (direct vs indirect)

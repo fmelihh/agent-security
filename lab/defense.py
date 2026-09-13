@@ -1,32 +1,26 @@
-"""Scenario 2 — DEFENSES against the (reliable) indirect injection.
+"""Scenario 2 — DEFENSES, expressed as native LangChain middleware.
 
-We attack the agent with the benign order-status request whose poisoned data
-arrives through get_order_notes, then try four defenses:
+Same indirect attack, five defenses:
 
-  1. Least privilege   -> the agent has no dangerous tools to abuse.        (holds)
-  2. Allowlist + HITL   -> a deterministic policy blocks the send/refund.   (holds)
-  3. Dual-LLM (naive)   -> quarantines the USER input only, not tool output.(FAILS)
-  4. Dual-LLM + policy  -> keep the quarantine, but also enforce the policy.(holds)
-  5. Output guard       -> scan/redact the RESPONSE channel for bulk PII.   (holds)
+  1. Least privilege   -> fewer tools                                 (holds)
+  2. policy_guard       -> allowlist + human-in-the-loop middleware    (holds)
+  3. Dual-LLM (naive)   -> quarantine the USER input only              (fails on indirect)
+  4. Dual-LLM + policy  -> quarantine + policy_guard middleware        (holds)
+  5. output_guard       -> redact the reply (after_model middleware)   (holds)
 
-The point of #3 vs #4: with indirect injection the untrusted text enters through
-a TOOL RESULT, so sanitizing the initial prompt is not enough. A deterministic,
-model-independent guard on the dangerous actions is what actually holds.
+Defenses 2 and 5 are just `create_agent(..., middleware=[...])` — the harness is
+composable middleware, not hand-written graph plumbing.
 
-#5 exists because a small/weak model often can't orchestrate send_email; it
-just dumps the data into its reply. A guard that only watches tool calls misses
-that, so the output channel needs its own check.
-
-Run:  uv run python -m lab.defense
+Run:  make defense      (uv run python -m lab.defense)
 """
 
 from __future__ import annotations
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from . import data
 from .agent import build_llm, run_agent
-from .report import print_trace, print_verdict, response_leaked_pii
+from .middleware import output_guard, policy_guard
+from .report import print_trace, print_verdict
 from .scenario import (
     INDIRECT_SYSTEM_PROMPT,
     INDIRECT_USER_REQUEST,
@@ -42,30 +36,10 @@ def header(title: str) -> None:
     print("=" * 72)
 
 
-# --------------------------------------------------------------------------
-# The deterministic guard: allowlist + human-in-the-loop.
-# Returns None to ALLOW, or a string to BLOCK (fed back to the model).
-# --------------------------------------------------------------------------
-HIGH_RISK_TOOLS = {"send_email", "create_refund"}
-AUTO_APPROVE = False  # a human reviewer who does NOT approve the suspicious action
-
-
-def guard_policy(name: str, args: dict) -> str | None:
-    if name == "send_email":
-        recipient = str(args.get("to", ""))
-        domain = recipient.split("@")[-1].lower().strip()
-        if domain not in data.COMPANY_DOMAINS:
-            return f"BLOCKED by policy: '{recipient}' is not an approved company domain."
-    if name in HIGH_RISK_TOOLS and not AUTO_APPROVE:
-        return f"BLOCKED: '{name}' is high-risk and was denied by human-in-the-loop review."
-    return None
-
-
 def quarantine_extract(llm, raw_text: str) -> str:
     """A quarantined LLM with NO tools. It only distills the genuine request and
-    is told to ignore any embedded instructions. Useful — but note it only sees
-    what we pass it, so it does NOT protect against injections that arrive later
-    through tool results."""
+    is told to ignore embedded instructions. It never sees tool results, so it
+    does not help against injections that arrive through a tool."""
     messages = [
         SystemMessage(
             content=(
@@ -79,84 +53,64 @@ def quarantine_extract(llm, raw_text: str) -> str:
     return llm.invoke(messages).content
 
 
-# --------------------------------------------------------------------------
-def defense_least_privilege(llm) -> None:
+def defense_least_privilege() -> None:
     header("DEFENSE 1: LEAST PRIVILEGE (read-only tools only)")
-    data.reset()
-    result = run_agent(llm, LEAST_PRIVILEGE_TOOLS, INDIRECT_SYSTEM_PROMPT, INDIRECT_USER_REQUEST)
+    result = run_agent(LEAST_PRIVILEGE_TOOLS, INDIRECT_SYSTEM_PROMPT, INDIRECT_USER_REQUEST)
     print_trace(result)
     print_verdict(result.final_text)
     print("  Why it holds: query_customer_db / send_email don't exist to abuse.")
 
 
-def defense_allowlist_hitl(llm) -> None:
-    header("DEFENSE 2: SEND ALLOWLIST + HUMAN-IN-THE-LOOP (deterministic policy)")
-    data.reset()
-    result = run_agent(llm, ALL_TOOLS, INDIRECT_SYSTEM_PROMPT, INDIRECT_USER_REQUEST, policy=guard_policy)
+def defense_policy_guard() -> None:
+    header("DEFENSE 2: policy_guard MIDDLEWARE (allowlist + human-in-the-loop)")
+    result = run_agent(ALL_TOOLS, INDIRECT_SYSTEM_PROMPT, INDIRECT_USER_REQUEST,
+                       middleware=[policy_guard])
     print_trace(result)
     print_verdict(result.final_text)
-    print("  Why it holds: even if the model is fooled, the SYSTEM refuses the")
-    print("  external send / high-risk action. Model-independent.")
+    print("  Why it holds: the middleware blocks the tool call before it runs.")
 
 
 def defense_dual_llm_naive(llm) -> None:
     header("DEFENSE 3: DUAL-LLM, NAIVE (quarantine the USER input only)")
-    data.reset()
     clean = quarantine_extract(llm, INDIRECT_USER_REQUEST)
     print(f"  quarantine LLM extracted: {clean!r}")
-    # The privileged LLM still has tools and still reads the poisoned note.
-    result = run_agent(llm, ALL_TOOLS, INDIRECT_SYSTEM_PROMPT, f"A customer needs help with: {clean}")
+    result = run_agent(ALL_TOOLS, INDIRECT_SYSTEM_PROMPT, f"A customer needs help with: {clean}")
     print_trace(result)
     breached = print_verdict(result.final_text)
     if breached:
         print("  LESSON: sanitizing the prompt does NOT stop indirect injection —")
-        print("  the untrusted text entered through the get_order_notes RESULT.")
+        print("  the untrusted text entered through the get_order_notes result.")
 
 
 def defense_dual_llm_plus_policy(llm) -> None:
-    header("DEFENSE 4: DUAL-LLM + POLICY (quarantine + deterministic guard)")
-    data.reset()
+    header("DEFENSE 4: DUAL-LLM + policy_guard (quarantine + middleware)")
     clean = quarantine_extract(llm, INDIRECT_USER_REQUEST)
     print(f"  quarantine LLM extracted: {clean!r}")
-    result = run_agent(llm, ALL_TOOLS, INDIRECT_SYSTEM_PROMPT,
-                       f"A customer needs help with: {clean}", policy=guard_policy)
+    result = run_agent(ALL_TOOLS, INDIRECT_SYSTEM_PROMPT, f"A customer needs help with: {clean}",
+                       middleware=[policy_guard])
     print_trace(result)
     print_verdict(result.final_text)
-    print("  Why it holds: the deterministic guard backstops the LLM layers.")
+    print("  Why it holds: the deterministic middleware backstops the LLM layers.")
 
 
-def apply_output_guard(text: str) -> tuple[str, bool]:
-    """Scan the model's final reply and redact it if it leaks bulk PII.
-
-    Small models often can't drive send_email, so they exfiltrate by dumping the
-    data straight into the response. A tool-only guard misses this entirely; the
-    output channel needs its own check."""
-    if response_leaked_pii(text):
-        return ("[response withheld by output guard: it contained multiple customers' PII]", True)
-    return (text, False)
-
-
-def defense_output_guard(llm) -> None:
-    header("DEFENSE 5: OUTPUT GUARD (scan/redact the RESPONSE channel)")
-    data.reset()
-    # Use the direct injection: weak models comply and dump PII into the reply.
-    result = run_agent(llm, ALL_TOOLS, TRIAGE_SYSTEM_PROMPT, INJECTED_TICKET)
+def defense_output_guard() -> None:
+    header("DEFENSE 5: output_guard MIDDLEWARE (redact the response channel)")
+    # Direct injection: a weak model complies and dumps PII into the reply.
+    result = run_agent(ALL_TOOLS, TRIAGE_SYSTEM_PROMPT, INJECTED_TICKET,
+                       middleware=[output_guard])
     print_trace(result)
-    safe_text, redacted = apply_output_guard(result.final_text)
-    if redacted:
-        print("  OUTPUT GUARD: reply contained bulk PII -> redacted before sending.")
-    print_verdict(safe_text)
+    print_verdict(result.final_text)
     print("  Why it matters: small models exfiltrate via the reply, not just via")
-    print("  tools. A guard that only watches tool calls would miss this.")
+    print("  tools; after_model redacts it before it leaves.")
 
 
 def main() -> None:
     llm = build_llm()
-    defense_least_privilege(llm)
-    defense_allowlist_hitl(llm)
+    defense_least_privilege()
+    defense_policy_guard()
     defense_dual_llm_naive(llm)
     defense_dual_llm_plus_policy(llm)
-    defense_output_guard(llm)
+    defense_output_guard()
 
 
 if __name__ == "__main__":
