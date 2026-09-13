@@ -61,9 +61,10 @@ def main() -> None:
         guard_policy("search_knowledge_base", {"query": "returns"}) is None,
     )
 
-    print("\nAll offline checks passed. Point .env at your model, then run:")
-    print("  uv run python -m lab.attack")
-    print("  uv run python -m lab.defense")
+    print("\nAll offline checks passed. Pull the model, then run the scenarios:")
+    print("  make model")
+    print("  make attack")
+    print("  make defense")
 
 
 if __name__ == "__main__":

@@ -93,24 +93,23 @@ happens" section below). That's where the real breach shows up.
 
 ## Run it (small local model, no hosted API)
 
-Requirements: [uv](https://docs.astral.sh/uv/) and
+Requirements: [uv](https://docs.astral.sh/uv/), `make`, and
 [Docker Model Runner](https://docs.docker.com/desktop/features/model-runner/)
 (bundled with Docker Desktop). The whole lab runs on your own machine.
 
+The commands are registered in a `Makefile`:
+
 ```bash
-# 1. install deps
-uv sync
+make install   # install dependencies
+make model     # start Docker and pull the small local model
+make smoke     # offline sanity checks (no model needed)
 
-# 2. offline sanity check (no model needed)
-uv run python -m lab.smoke
+make attack    # run the attack scenario (direct + indirect)
+make defense   # run all five defenses
+make dev       # drive the agent yourself in LangGraph Studio
+make ui        # LangServe browser playground
 
-# 3. pull the small local model
-docker desktop start
-docker model pull ai/qwen2.5:1.5B-F16
-
-# 4. watch the breach, then the defenses
-uv run python -m lab.attack
-uv run python -m lab.defense
+make help      # list every target
 ```
 
 The model and endpoint are hard-coded in `lab/agent.py`:
@@ -120,39 +119,45 @@ MODEL = "ai/qwen2.5:1.5B-F16"
 BASE_URL = "http://localhost:12434/engines/v1"
 ```
 
-No `.env` and no API key needed. The lab talks to the model through the
-OpenAI-compatible client, so if you ever want a different model or endpoint you
+No `.env` and no API key needed. If you ever want a different model or endpoint,
 change those two constants. The interesting case is the small local model,
 because that's what you actually end up running when cost, privacy, or on-prem
 rules out a hosted one.
 
-## Run it yourself (interactive & UI)
+## Drive it yourself
 
-You don't have to run the canned scripts; you can drive the agent yourself and
-watch it act autonomously on any ticket.
+You don't have to run the canned scripts; you can drive the agent by hand and
+watch it act on any ticket you throw at it.
 
-**Interactive CLI.** Pick an example or paste your own ticket, and choose how
-hardened the agent is:
+**LangGraph Studio** (`make dev`). This is a LangGraph `StateGraph`, so the
+LangGraph CLI serves it straight into Studio, where you type a ticket as the
+user message and step through the graph node by node:
 
 ```bash
-uv run python -m lab.interactive
+make dev        # uv run langgraph dev
+# then open the Studio URL it prints
 ```
 
-**Browser UI (LangServe playground).** A LangChain web UI where you submit a
-ticket and a `mode`, and see the agent's tool calls and verdict:
+`langgraph.json` exposes three graphs so you can replay the same ticket against
+each and watch the defenses kick in:
+
+- `vulnerable`: all tools, no policy (the one that breaches)
+- `guarded`: all tools plus the allowlist / human-in-the-loop policy
+- `least_privilege`: read-only tools only
+
+**Browser playground** (`make ui`). A LangServe web UI where you submit a ticket
+plus a `mode` (`vulnerable`, `least_privilege`, `guarded`, `dual_llm`) and see
+the tool calls and verdict:
 
 ```bash
-uv run uvicorn lab.serve:app --reload
+make ui         # uv run uvicorn lab.serve:app --reload
 # open http://127.0.0.1:8000/triage/playground/
 ```
-
-`mode` can be: `vulnerable`, `least_privilege`, `guarded`, or `dual_llm`, so you
-can replay the same ticket against the vulnerable agent and each defense.
 
 ## Five examples to try
 
 These live in `lab/examples.py`. They're inputs to explore, not a test suite;
-each hides a different injection style. Paste them into the CLI or the UI.
+each hides a different injection style. Paste them into Studio or the playground.
 
 | # | Example | Technique |
 |---|---------|-----------|
@@ -222,11 +227,14 @@ lab/
 ├── examples.py     # 6 example inputs to try
 ├── attack.py       # Scenario 1: vulnerable agent (direct vs indirect)
 ├── defense.py      # Scenario 2: five defenses (incl. the output guard)
-├── interactive.py  # run the agent yourself (CLI)
+├── graph.py        # graph entrypoints for the LangGraph CLI / Studio
 ├── serve.py        # run the agent from a browser UI (LangServe)
 ├── report.py       # trace + breach detector (tool channel AND response channel)
 └── smoke.py        # offline checks (no API key)
 ```
+
+Plus `langgraph.json` (Studio graph registry) and a `Makefile` (the commands
+above) at the project root.
 
 ## Takeaways
 

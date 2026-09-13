@@ -11,8 +11,8 @@ dependencies = [
     "langserve>=0.3.0",
     "fastapi>=0.141.1",
     "uvicorn>=0.30.0",
-    "sse-starlette>=3.4.11",
     "langgraph>=1.2.11",
+    "langgraph-cli[inmem]>=0.2.0",
 ]
 
 [tool.uv]

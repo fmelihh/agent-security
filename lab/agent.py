@@ -77,14 +77,27 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
 
-def build_graph(llm: ChatOpenAI, tools: list, policy: Optional[Policy] = None):
-    """Compile the LangGraph agent. `policy` is the harness hook on tool calls."""
+def build_graph(
+    llm: ChatOpenAI,
+    tools: list,
+    policy: Optional[Policy] = None,
+    system_prompt: Optional[str] = None,
+):
+    """Compile the LangGraph agent. `policy` is the harness hook on tool calls.
+
+    `system_prompt` is used by the LangGraph CLI / Studio entrypoints, where the
+    caller only supplies a user message: if the incoming state has no system
+    message, we prepend this one. run_agent passes its own system message, so it
+    is left untouched."""
     llm_with_tools = llm.bind_tools(tools)
     tool_map = {t.name: t for t in tools}
 
     def agent_node(state: AgentState) -> dict:
+        msgs = state["messages"]
+        if system_prompt and not any(isinstance(m, SystemMessage) for m in msgs):
+            msgs = [SystemMessage(content=system_prompt), *msgs]
         # The LLM decides what to do next (call a tool, or answer).
-        return {"messages": [llm_with_tools.invoke(state["messages"])]}
+        return {"messages": [llm_with_tools.invoke(msgs)]}
 
     def tools_node(state: AgentState) -> dict:
         # Execute the proposed tool calls — through the harness policy.

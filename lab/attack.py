@@ -70,7 +70,7 @@ def main() -> None:
     else:
         print(
             "No breach this run. Injection success is model- and phrasing-dependent;\n"
-            "try lab/interactive.py with different tickets and models."
+            "try 'make dev' (LangGraph Studio) with different tickets and models."
         )
 
 
