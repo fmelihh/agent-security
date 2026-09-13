@@ -39,21 +39,19 @@ from langgraph.graph.message import add_messages
 load_dotenv()
 
 
-def build_llm(temperature: float = 0.0) -> ChatOpenAI:
-    """Build a ChatOpenAI client pointed at any OpenAI-compatible endpoint.
+# The lab is pinned to a small local model served by Docker Model Runner.
+# These are intentionally hard-coded (not read from .env) so the whole thing
+# runs on your machine with no hosted API. To try another model or endpoint,
+# change these two constants.
+MODEL = "ai/qwen2.5:1.5B-F16"
+BASE_URL = "http://localhost:12434/engines/v1"
 
-    Defaults to a small local model served by Docker Model Runner, so the whole
-    lab runs on your own machine with no hosted API. Point it anywhere else by
-    setting OPENAI_BASE_URL / MODEL in .env."""
-    api_key = os.getenv("OPENAI_API_KEY", "local")
-    base_url = os.getenv("OPENAI_BASE_URL", "http://localhost:12434/engines/v1")
-    model = os.getenv("MODEL", "ai/qwen2.5:1.5B-F16")
-    if not api_key:
-        raise RuntimeError(
-            "OPENAI_API_KEY is empty. For a local model any non-empty value works "
-            "(it is ignored). See .env.example."
-        )
-    return ChatOpenAI(model=model, temperature=temperature, api_key=api_key, base_url=base_url)
+
+def build_llm(temperature: float = 0.0) -> ChatOpenAI:
+    """Build a ChatOpenAI client for the local model (see MODEL / BASE_URL above)."""
+    # The local runner ignores the key, but the client still needs a non-empty one.
+    api_key = os.getenv("OPENAI_API_KEY") or "local"
+    return ChatOpenAI(model=MODEL, temperature=temperature, api_key=api_key, base_url=BASE_URL)
 
 
 @dataclass
