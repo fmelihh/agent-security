@@ -159,7 +159,9 @@ make ui         # uv run uvicorn lab.serve:app --reload
 ## Five examples to try
 
 These live in `lab/examples.py`. They're inputs to explore, not a test suite;
-each hides a different injection style. Paste them into Studio or the playground.
+each hides a different injection style. `make attack` runs the whole set against
+the vulnerable agent and reports which ones land (and through which channel), or
+paste them into Studio or the playground one at a time.
 
 | # | Example | Technique |
 |---|---------|-----------|
