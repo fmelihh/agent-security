@@ -18,6 +18,13 @@ lesson is that **security has to live in the harness, not the model.**
 > Everything here is fake data, a fake exfiltration target, and runs locally.
 > This is defensive/educational security.
 
+## The article
+
+The long-form write-up that walks through the attack and every defense layer:
+
+- English: [`article/agent-security-en.md`](article/agent-security-en.md)
+- Türkçe: [`article/agent-security-tr.md`](article/agent-security-tr.md)
+
 ## The setup
 
 We build a customer-support **triage agent**. Its job is to read incoming
