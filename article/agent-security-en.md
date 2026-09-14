@@ -78,11 +78,11 @@ The cleanest way to understand this problem comes from Simon Willison's **Lethal
 
 Now look at the triage agent in our example:
 
-![tablo-1-trifecta](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/tablo-1-trifecta.png)
+![tablo-1-trifecta-en](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/tablo-1-trifecta-en.png)
 
 All three were open. So disaster wasn't a possibility, it was only a matter of timing.
 
-![diyagram-1-lethal-trifecta](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/diyagram-1-lethal-trifecta.png)
+![diyagram-1-lethal-trifecta-en](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/diyagram-1-lethal-trifecta-en.png)
 *The Lethal Trifecta: when the three capabilities meet in a single agent, an instruction embedded in untrusted content can carry private data out.*
 
 This framework sharpens the question to ask when designing an agent. Not "what can this agent do?" but "are these three things open at the same time?"
@@ -101,7 +101,7 @@ The second reflex is usually to harden the system prompt: telling the model expl
 
 The shared flaw of both approaches is the same: both live at the prompt level and ultimately depend on the model's cooperation. Yet the model is precisely the component we don't want to trust. That's why the harness matters more: it doesn't ask the model for anything, it stops it deterministically before the tool runs or before the response goes out. The model can ignore a rule. It cannot ignore the harness.
 
-![diyagram-4-prompt-vs-harness](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/diyagram-4-prompt-vs-harness.png)
+![diyagram-4-prompt-vs-harness-en](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/diyagram-4-prompt-vs-harness-en.png)
 *Filters and the system prompt are soft defenses that live at the model layer, and they can be bypassed. A small model in particular ignores the rule. The harness, on the other hand, is a deterministic layer outside the model: it stops the harmful action before the tool runs or before the response leaves.*
 
 Real defense isn't in a single solution, it's in layers. And specifically in the layers that are independent of the model.
@@ -139,7 +139,7 @@ The idea is elegant: use two separate models.
 
 This way, the component that reads untrusted content and the component that takes powerful actions are physically separated from each other. The three components of the Lethal Trifecta can never meet in a single context. In tests, CaMeL blocked 67% of attacks, and on some models it brought successful attacks down to zero.
 
-![diyagram-2-dual-llm-camel](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/diyagram-2-dual-llm-camel.png)
+![diyagram-2-dual-llm-camel-en](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/diyagram-2-dual-llm-camel-en.png)
 *Dual LLM / CaMeL: the quarantined LLM processes the raw text but can't reach any tool. The privileged LLM calls tools but never sees the raw untrusted text.*
 
 But an honest note from the field: these solutions have a serious cost. Two model calls means higher cost, higher latency and a more complex architecture. That's exactly the real tension you face when delivering an agent to a customer: striking a balance between the *ideal security architecture* and the *customer's budget, deadline and performance expectations*. The right answer isn't always the most secure one. It's the solution that brings the risk down to an acceptable level at an acceptable cost.
@@ -152,7 +152,7 @@ Everything up to here has been conceptual. Now let's actually run it. Seeing pro
 
 I built the article's triage agent with LangChain's `create_agent`. I wrote the security controls with LangChain's native **middleware** mechanism as well: a `wrap_tool_call` middleware that inspects tool calls, and an `after_model` middleware that scans the response. The essence of the architecture is this: the model only proposes tool calls. Everything that could do harm passes through these middlewares, which don't trust the model at all.
 
-![diyagram-3-lab-mimari](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/diyagram-3-lab-mimari.png)
+![diyagram-3-lab-mimari-en](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/diyagram-3-lab-mimari-en.png)
 *The LangGraph flow: the `START → agent → (tool_calls?) → tools → agent` loop, and the `agent → output_guard → END` path. Untrusted inputs (the ticket + poisoned tool results) flow into the agent, but neither the tool actions (policy guard, in the `tools` node) nor the final response (output_guard) can leave without passing through the harness.*
 
 First, the tools. The Lethal Trifecta is hidden right here, inside the code:
@@ -314,7 +314,7 @@ But in its naive form this quarantines only the **first user input**. In our ind
 
 Let me summarize which defense catches what:
 
-![tablo-2-savunmalar](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/tablo-2-savunmalar.png)
+![tablo-2-savunmalar-en](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/tablo-2-savunmalar-en.png)
 
 What's apparent is this: everything that actually holds is deterministic and model-independent. LLM-layer tricks (a hardened prompt, dual-LLM) help but never hold on their own.
 
@@ -330,7 +330,7 @@ https://gist.github.com/fmelihh/7a80cd2004b1eafe3b9e533e2beee59b
 
 In Studio, pick a graph on the left, paste a user message (a ticket) as input, and run it. I'd suggest this order:
 
-![tablo-3-studio](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/tablo-3-studio.png)
+![tablo-3-studio-en](https://raw.githubusercontent.com/fmelihh/agent-security/main/article/img/tablo-3-studio-en.png)
 
 The logic is this: in 1-2, see that the attack works and watch the tool flow. In 3-5, feed the same input to the defended graphs and compare side by side how a single variable (the harness) changes the behavior.
 
