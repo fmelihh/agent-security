@@ -22,7 +22,7 @@ lesson is that **security has to live in the harness, not the model.**
 
 The long-form write-up that walks through the attack and every defense layer:
 
-- English: [`article/agent-security-en.md`](article/agent-security-en.md)
+- English: [`article/ai-agent-security-en.md`](article/ai-agent-security-en.md)
 - Türkçe: [`article/agent-security-tr.md`](article/agent-security-tr.md)
 
 ## The setup
